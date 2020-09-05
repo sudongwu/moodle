@@ -11,7 +11,8 @@ $instance = $DB->get_record('enrol', array('enrol' => 'jiaowu', 'id' => $instanc
 if ($type == 1) {
     require_once('lib.php');
     $plugin = enrol_get_plugin('jiaowu');
-    $userData = $plugin->get_jiaowu_users();
+    $courseinfo = $DB->get_record('enrol_jiaowu',['enrolid' => $instanceid],'courseid');
+    $userData = $plugin->get_jiaowu_users($courseinfo->courseid);
     $plugin->auto_enrol_jw($instance->id,$userData);
     redirect(new moodle_url('/enrol/instances.php?id='.$instance->courseid),'更新成功');
 }
@@ -34,15 +35,15 @@ $table = new html_table();
 
 $headers = [];
 
-$mastercheckbox = new \core\output\checkbox_toggleall('participants-table', true, [
-    'id' => 'select-all-participants',
-//    'name' => 'xuanze1',
-    'label' => false ? get_string('deselectall') : get_string('selectall'),
-    'labelclasses' => 'sr-only',
-    'classes' => 'm-1',
-    'checked' => false
-]);
-$headers[] = $OUTPUT->render($mastercheckbox);
+//$mastercheckbox = new \core\output\checkbox_toggleall('participants-table', true, [
+//    'id' => 'select-all-participants',
+////    'name' => 'xuanze1',
+//    'label' => false ? get_string('deselectall') : get_string('selectall'),
+//    'labelclasses' => 'sr-only',
+//    'classes' => 'm-1',
+//    'checked' => false
+//]);
+//$headers[] = $OUTPUT->render($mastercheckbox);
 $headers[] = '学号';
 $headers[] = '姓名';
 $headers[] = '电子邮箱地址';
@@ -54,22 +55,22 @@ $table->head = $headers;
 //$table->align = array('left', 'center', 'center', 'center','center','center');
 $table->data  = array();
 
-$errorlist = $DB->get_record('enrol_jiaowu',['enrolid'=>$instanceid],'data');
+$errorlist = $DB->get_record('enrol_jiaowu',['enrolid'=>$instanceid],'collegename,data');
 
 
 if ($errorlist) {
     $errors = json_decode($errorlist->data,true);
     foreach ($errors['error'] as $k => $v) {
-        $checkbox = new \core\output\checkbox_toggleall('participants-table', false, [
-            'classes' => 'usercheckbox m-1',
-            'id' => 'user-' . $v['user'],
-            'name' => 'xuanze[]',
-            'value' => $v['user'],
-        ]);
-        $dd = $OUTPUT->render($checkbox);
+//        $checkbox = new \core\output\checkbox_toggleall('participants-table', false, [
+//            'classes' => 'usercheckbox m-1',
+//            'id' => 'user-' . $v['user'],
+//            'name' => 'xuanze[]',
+//            'value' => $v['user'],
+//        ]);
+//        $dd = $OUTPUT->render($checkbox);
         $role = $DB->get_record('role', array('id' => $v['roleid']));
         $rolename = role_get_name($role);
-        $table->data[] = [$dd,$v['user'],$v['user'],'','',$rolename,get_string('jiaowu_error_'.$v['error'],'enrol_jiaowu')];
+        $table->data[] = [$v['user'],$v['user'],'',$errorlist->collegename,$rolename,get_string('jiaowu_error_'.$v['error'],'enrol_jiaowu')];
     }
 }
 

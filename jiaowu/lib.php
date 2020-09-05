@@ -168,7 +168,7 @@ class enrol_jiaowu_plugin extends enrol_plugin
 
         \core\notification::success(get_string('youenrolledincourse', 'enrol'));
 
-        if ($instance->password and $instance->customint1 and $data->enrolpassword !== $instance->password) {
+        if ($instance->customint1 and $data->enrolpassword !== $instance->password) {
             // It must be a group enrolment, let's assign group too.
             $groups = $DB->get_records('groups', array('courseid' => $instance->courseid), 'id', 'id, enrolmentkey');
             foreach ($groups as $group) {
@@ -383,51 +383,6 @@ class enrol_jiaowu_plugin extends enrol_plugin
         return $fields;
     }
 
-    /**
-     * Send welcome email to specified user.
-     *
-     * @param stdClass $instance
-     * @param stdClass $user user record
-     * @return void
-     */
-    protected function email_welcome_message($instance, $user)
-    {
-        global $CFG, $DB;
-
-        $course = $DB->get_record('course', array('id' => $instance->courseid), '*', MUST_EXIST);
-        $context = context_course::instance($course->id);
-
-        $a = new stdClass();
-        $a->coursename = format_string($course->fullname, true, array('context' => $context));
-        $a->profileurl = "$CFG->wwwroot/user/view.php?id=$user->id&course=$course->id";
-
-        if (trim($instance->customtext1) !== '') {
-            $message = $instance->customtext1;
-            $key = array('{$a->coursename}', '{$a->profileurl}', '{$a->fullname}', '{$a->email}');
-            $value = array($a->coursename, $a->profileurl, fullname($user), $user->email);
-            $message = str_replace($key, $value, $message);
-            if (strpos($message, '<') === false) {
-                // Plain text only.
-                $messagetext = $message;
-                $messagehtml = text_to_html($messagetext, null, false, true);
-            } else {
-                // This is most probably the tag/newline soup known as FORMAT_MOODLE.
-                $messagehtml = format_text($message, FORMAT_MOODLE, array('context' => $context, 'para' => false, 'newlines' => true, 'filter' => true));
-                $messagetext = html_to_text($messagehtml);
-            }
-        } else {
-            $messagetext = get_string('welcometocoursetext', 'enrol_jiaowu', $a);
-            $messagehtml = text_to_html($messagetext, null, false, true);
-        }
-
-        $subject = get_string('welcometocourse', 'enrol_jiaowu', format_string($course->fullname, true, array('context' => $context)));
-
-        $sendoption = $instance->customint4;
-        $contact = $this->get_welcome_email_contact($sendoption, $context);
-
-        // Directly emailing welcome message rather than using messaging.
-        email_to_user($user, $contact, $subject, $messagetext, $messagehtml);
-    }
 
     /**
      * Sync all meta course links.
@@ -665,6 +620,25 @@ class enrol_jiaowu_plugin extends enrol_plugin
     }
 
     /**
+     * Return an array of valid options for the groups.
+     *
+     * @param context $coursecontext
+     * @return array
+     */
+    protected function get_group_options($coursecontext) {
+        $groups = array(0 => get_string('none'));
+        if (has_capability('moodle/course:managegroups', $coursecontext)) {
+            $groups[-1] = get_string('creategroup', 'enrol_cohort');
+        }
+
+        foreach (groups_get_all_groups($coursecontext->instanceid) as $group) {
+            $groups[$group->id] = format_string($group->name, true, array('context' => $coursecontext));
+        }
+
+        return $groups;
+    }
+
+    /**
      * The self enrollment plugin has several bulk operations that can be performed.
      * @param course_enrolment_manager $manager
      * @return array
@@ -683,6 +657,7 @@ class enrol_jiaowu_plugin extends enrol_plugin
         }
         return $bulkoperations;
     }
+
 
     /**
      * Add elements to the edit instance form.
@@ -714,31 +689,29 @@ class enrol_jiaowu_plugin extends enrol_plugin
         // 开课学院
         if ($instance->id) {
             $ck1 = $DB->get_record('enrol_jiaowu', ['enrolid' => $instance->id]);
-            $mform->addElement('text', 'college', get_string('courseinfo', 'enrol_jiaowu'), 'readonly'); // 设置只读
-            $mform->setType('college', PARAM_TEXT);
             $cname = $ck1->collegename . '-' . $ck1->coursename . '-' . $ck1->stunum;
-            $mform->setDefault('college', $cname);
+            $mform->addElement('static', 'description', get_string('courseinfo', 'enrol_jiaowu'),$cname);
         } else {
-            $college = [];
-            $college = [
-                '123123~123~AAAAA~BBBBB~666' => 'AAAAA-BBBBB-666',
-                '124124~456~AAAAA~BBBBB~777' => 'AAAAA-BBBBB-777',
-                '124124~789~AAAAA~BBBBB~888' => 'AAAAA-BBBBB-888',
-            ];
+            $college = $this->get_jiaowu_course();
+            if (empty($college)) {
+                redirect(new moodle_url('/enrol/instances.php?id='.$instance->courseid),get_string('notfound','enrol_jiaowu'));
+            }
+
             $mform->addElement('select', 'college', get_string('courseinfo', 'enrol_jiaowu'), $college);
         }
 
+        $coursecontext =  context_course::instance($instance->courseid);
+
+        $groups = $this->get_group_options($coursecontext);
+        $mform->addElement('select', 'customint2', get_string('addgroup', 'enrol_jiaowu'), $groups);
+
         $mform->addElement('hidden', 'roleid');
         $mform->setType('roleid', PARAM_TEXT);
-        $mform->setDefault('status', 5);
+        $mform->setDefault('roleid', 5);
 
-        $mform->addElement('hidden', 'customint6');
-        $mform->setType('customint6', PARAM_TEXT);
-        $mform->setDefault('status', 1);
-
-        $mform->addElement('hidden', 'customint1');
-        $mform->setType('customint1', PARAM_TEXT);
-        $mform->setDefault('status', 0);
+        $mform->addElement('hidden', 'expirynotify');
+        $mform->setType('expirynotify', PARAM_TEXT);
+        $mform->setDefault('expirynotify', 0);
 
     }
 
@@ -776,55 +749,106 @@ class enrol_jiaowu_plugin extends enrol_plugin
      */
     public function add_instance($course, array $fields = null)
     {
-        global $DB;
+        global $CFG, $DB;
+        $coursedata = [];
+        if (!empty($fields) && !empty($fields['college'])) {
+            $dd = explode('~', $fields['college']);
+            $coursedata = [
+                'termid' => $dd[0],  // 学期
+                'courseid' => $dd[1],  // 教务系统上课程id
+                'collegename' => $dd[2],  // 学院名
+                'coursename' => $dd[3],  // 课程名
+                'stunum' => $dd[4],  // 选课人数
+            ];
+        }
+        if (!empty($fields['customint2']) && $fields['customint2'] == -1) {
+            // Create a new group for the cohort if requested.
+            $context = context_course::instance($course->id);
+            require_capability('moodle/course:managegroups', $context);
+            $groupid = enrol_jiaowu_create_new_group($course->id, $coursedata['coursename']);
+            $fields['customint2'] = $groupid;
+        }
         $new = parent::add_instance($course, $fields);
+
         if ($new) {
-            $coursedata = [];
-            if (!empty($fields) && !empty($fields['college'])) {
-                $dd = explode('~', $fields['college']);
-                $coursedata = [
-                    'termid' => $dd[0],  // 学期
-                    'courseid' => $dd[1],  // 教务系统上课程id
-                    'collegename' => $dd[2],  // 学院名
-                    'coursename' => $dd[3],  // 课程名
-                    'stunum' => $dd[4],  // 选课人数
-                ];
-            }
-            $userData = $this->get_jiaowu_users();
+            $userData = $this->get_jiaowu_users($coursedata['courseid']);
             $this->auto_enrol_jw($new, $userData, $coursedata);
         }
+        require_once("$CFG->dirroot/enrol/cohort/locallib.php");
+        $trace = new null_progress_trace();
+        enrol_cohort_sync($trace, $course->id);
+        $trace->finished();
         return true;
     }
 
-    public function get_jiaowu_users()
+    // 获取token
+    public function get_jiaowu_token()
     {
-        $userData = array(
-            [
-                'username' => 's1',
-                'roleid' => 5,
-            ],
-            [
-                'username' => 's2',
-                'roleid' => 5,
-            ],
-            [
-                'username' => 's3',
-                'roleid' => 5,
-            ],
-            [
-                'username' => 'xswl',
-                'roleid' => 5,
-            ],
-//            [
-//                'username' => 'yqh',
-//                'roleid' => 5,
-//            ],
-            [
-                'username' => 'test1',
-                'roleid' => 3,
-            ],
+        $config = get_config('enrol_jiaowu');
+        $url = $config->scnurl;
+        $cid = $config->scnucid;
+        $cselect = $config->scnuselect;
 
-        );
+        $timestamp = time();
+        $sign = sha1($cid.$timestamp.$cselect);
+
+        $postdata = [
+            'clientid'=> $cid,
+            'timestamp'=> $timestamp,
+            'sign' => $sign
+        ];
+        $curl = new curl();
+        $res = $curl->post($url,$postdata);
+        $res = json_decode($res,true);
+        $token = '';
+        if ($res['status'] == 1 ) {
+            $token = $res['data']['token'];
+        }
+        return $token;
+    }
+
+    // 获取当前教师的课程信息
+    public function get_jiaowu_course() {
+        $token = $this->get_jiaowu_token();
+        $curl = new curl();
+        $url = 'http://moodle.scnu.edu.cn/wsbs/outside/getcourse';
+        $data = [
+            'username' => 19881016,
+            'token' => $token,
+        ];
+        $cd = $curl->post($url,$data);
+        $cd = json_decode($cd,true);
+        $course = [];
+        if ($cd['status'] == 1) {
+            foreach ($cd['data'] as $k => $v) {
+                $course[2020 . '~' .$v['idnumber'] . '~' . $v['category'] . '~' . $v['shortname'] . '~' . $v['stunum']] = $v['category'] . '-' . $v['shortname'] . '-' . $v['stunum'];
+            }
+        }
+        return $course;
+    }
+
+    // 获取课程下的学员信息
+    public function get_jiaowu_users($courseid)
+    {
+        $token = $this->get_jiaowu_token();
+        $curl = new curl();
+        $url = 'http://moodle.scnu.edu.cn/wsbs/outside/getstudent';
+        $data = [
+            'idnumber' => $courseid,
+            'token' => $token,
+        ];
+        $res = $curl->post($url,$data);
+        $res = json_decode($res,true);
+        $userData = [];
+        if ($res['status'] == 1) {
+            foreach ($res['data'] as $v) {
+                $userData[] = [
+                    'username' => $v,
+                    'roleid' => 5
+                ];
+            }
+        }
+
         return $userData;
     }
 
@@ -836,6 +860,21 @@ class enrol_jiaowu_plugin extends enrol_plugin
      */
     public function update_instance($instance, $data)
     {
+        // In the form we are representing 2 db columns with one field.
+        if ($data->expirynotify == 2) {
+            $data->expirynotify = 1;
+            $data->notifyall = 1;
+        } else {
+            $data->notifyall = 0;
+        }
+        // Keep previous/default value of disabled expirythreshold option.
+        if (!$data->expirynotify) {
+            $data->expirythreshold = $instance->expirythreshold;
+        }
+        // Add previous value of newenrols if disabled.
+        if (!isset($data->customint6)) {
+            $data->customint6 = $instance->customint6;
+        }
         return parent::update_instance($instance, $data);
     }
 
@@ -848,18 +887,26 @@ class enrol_jiaowu_plugin extends enrol_plugin
 
     public function auto_enrol_jw($instanceid, $userdata, $coursedata = [])
     {
-        global $DB;
+        global $CFG, $DB;
 
+        // 获取 报名方式 的对象信息
         $instance = $DB->get_record('enrol', array('enrol' => 'jiaowu', 'id' => $instanceid), '*', MUST_EXIST);
         $enroldata = [];
 
-        if (count($userdata) > 0) {
+        if (count($userdata) > 0) {  // 当有用户信息的时候
             foreach ($userdata as $k => $v) {
-                $userid = $DB->get_field('user', 'id', ['username' => $v['username']]);
-                if ($userid) {  // 有账号
-                    $ck1 = $DB->get_record('user_enrolments', ['enrolid' => $instanceid, 'userid' => $userid]);
+                $userid = $DB->get_field('user', 'id', ['username' => $v['username']]);  // 获取用户的id
+                if ($userid) {
+                    $sql = "select ue.* from {user_enrolments} ue join {enrol} e on ue.enrolid = e.id where e.courseid = $instance->courseid and ue.userid = $userid";
+                    $ck1 = $DB->get_record_sql($sql); // 查看用户是否进行过报名
                     if ($ck1) {
-                        if ($ck1->status == 1) {
+                        if ($ck1->status == 1) { // 如果课程状态为已暂停，则启用他
+
+                            if ($instance->customint2) {
+                                require_once("$CFG->dirroot/group/lib.php");
+                                groups_add_member($instance->customint2,$userid);
+                            }
+
                             $us = "update {user_enrolments} set status = 0 where userid = ? and enrolid = ?";
                             $DB->execute($us, [$userid, $instanceid]);
                         }
@@ -867,9 +914,15 @@ class enrol_jiaowu_plugin extends enrol_plugin
                         continue;
                     }
 
+
                     $getenrol = $this->enrol_user($instance, $userid, $v['roleid']);
                     if (empty($getenrol)) {  // 没有返回则报名成功
-                        $enroldata['success'][] = $v['username'];
+                        if ($instance->customint2) {
+                            require_once("$CFG->dirroot/group/lib.php");
+                            groups_add_member($instance->customint2,$userid);
+                            $enroldata['success'][] = $v['username'];
+                        }
+
                         continue;
                     }
 
@@ -882,12 +935,20 @@ class enrol_jiaowu_plugin extends enrol_plugin
                 }
             }
 
-            $ck2 = $DB->get_record('enrol_jiaowu', ['enrolid' => $instanceid]);
+            $ck2 = $DB->get_record('enrol_jiaowu', ['enrolid' => $instanceid]); // 获取存放在 enrol_jiaowu 中的数据，用于进行更新操作
             if ($ck2) {
-                $ever = json_decode($ck2->data, true);
-                $dif = array_diff($ever['success'], $enroldata['success']);
-                $ever['error'] = array_merge($ever['error'], $enroldata['error']);
-
+                $ever = json_decode($ck2->data, true);  // 获取同步课程数据
+                $dif = [];
+                if (!empty($ever['success'])) {
+                    if (empty($enroldata['success'])) {
+                        $dif = $ever['success'];
+                    } else {
+                        $dif = array_diff($ever['success'], $enroldata['success']);
+                    }
+                }
+                if (!empty($ever['error']) && !empty($enroldata['error'])) {
+                    $ever['error'] = array_merge($ever['error'], $enroldata['error']);
+                }
                 if ($dif) {
                     foreach ($dif as $vv) {
                         $euid = $DB->get_field('user', 'id', ['username' => $vv]);  // 退选的用户id
@@ -900,14 +961,16 @@ class enrol_jiaowu_plugin extends enrol_plugin
                         ];
                     }
                 }
-                foreach ($ever['error'] as $kk => $vvv) {
-                    $euid = $DB->get_field('user', 'id', ['username' => $kk]);  // 用户id
-                    $ck3 = $DB->get_record('user_enrolments', ['enrolid' => $instanceid, 'userid' => $euid, 'status' => 0]);
-                    if ($ck3) {
-                        unset($ever['error'][$kk]);
+                if (!empty($ever['error'])) {
+                    foreach ($ever['error'] as $kk => $vvv) {
+                        $euid = $DB->get_field('user', 'id', ['username' => $kk]);  // 用户id
+                        $ck3 = $DB->get_record('user_enrolments', ['enrolid' => $instanceid, 'userid' => $euid, 'status' => 0]);
+                        if ($ck3) {
+                            unset($ever['error'][$kk]);
+                        }
                     }
                 }
-                $ever['success'] = $enroldata['success'];
+                $ever['success'] = empty($enroldata['success']) ? [] : $enroldata['success'];
                 $sql = "update {enrol_jiaowu} set data = ? , timemodified = ? where enrolid = ?";
                 $DB->execute($sql, [json_encode($ever), time(), $instanceid]);
                 return true;
@@ -934,74 +997,6 @@ class enrol_jiaowu_plugin extends enrol_plugin
     }
 
     /**
-     * Gets a list of roles that this user can assign for the course as the default for self-enrolment.
-     *
-     * @param context $context the context.
-     * @param integer $defaultrole the id of the role that is set as the default for self-enrolment
-     * @return array index is the role id, value is the role name
-     */
-    public function extend_assignable_roles($context, $defaultrole)
-    {
-        global $DB;
-
-        $roles = get_assignable_roles($context, ROLENAME_BOTH);
-        if (!isset($roles[$defaultrole])) {
-            if ($role = $DB->get_record('role', array('id' => $defaultrole))) {
-                $roles[$defaultrole] = role_get_name($role, $context, ROLENAME_BOTH);
-            }
-        }
-        return $roles;
-    }
-
-    /**
-     * Get the "from" contact which the email will be sent from.
-     *
-     * @param int $sendoption send email from constant ENROL_SEND_EMAIL_FROM_*
-     * @param $context context where the user will be fetched
-     * @return mixed|stdClass the contact user object.
-     */
-    public function get_welcome_email_contact($sendoption, $context)
-    {
-        global $CFG;
-
-        $contact = null;
-        // Send as the first user assigned as the course contact.
-        if ($sendoption == ENROL_SEND_EMAIL_FROM_COURSE_CONTACT) {
-            $rusers = array();
-            if (!empty($CFG->coursecontact)) {
-                $croles = explode(',', $CFG->coursecontact);
-                list($sort, $sortparams) = users_order_by_sql('u');
-                // We only use the first user.
-                $i = 0;
-                do {
-                    $allnames = get_all_user_name_fields(true, 'u');
-                    $rusers = get_role_users($croles[$i], $context, true, 'u.id,  u.confirmed, u.username, ' . $allnames . ',
-                    u.email, r.sortorder, ra.id', 'r.sortorder, ra.id ASC, ' . $sort, null, '', '', '', '', $sortparams);
-                    $i++;
-                } while (empty($rusers) && !empty($croles[$i]));
-            }
-            if ($rusers) {
-                $contact = array_values($rusers)[0];
-            }
-        } else if ($sendoption == ENROL_SEND_EMAIL_FROM_KEY_HOLDER) {
-            // Send as the first user with enrol/jiaowu:holdkey capability assigned in the course.
-            list($sort) = users_order_by_sql('u');
-            $keyholders = get_users_by_capability($context, 'enrol/jiaowu:holdkey', 'u.*', $sort);
-            if (!empty($keyholders)) {
-                $contact = array_values($keyholders)[0];
-            }
-        }
-
-        // If send welcome email option is set to no reply or if none of the previous options have
-        // returned a contact send welcome message as noreplyuser.
-        if ($sendoption == ENROL_SEND_EMAIL_FROM_NOREPLY || empty($contact)) {
-            $contact = core_user::get_noreply_user();
-        }
-
-        return $contact;
-    }
-
-    /**
      * Returns edit icons for the page with list of instances.
      * @param stdClass $instance
      * @return array
@@ -1024,21 +1019,27 @@ class enrol_jiaowu_plugin extends enrol_plugin
 
         return $icons;
     }
+
 }
 
 /**
- * Get icon mapping for font-awesome.
+ * Create a new group with the cohorts name.
+ *
+ * @param int $courseid
+ * @param int $cohortid
+ * @return int $groupid Group ID for this cohort.
  */
-function enrol_jiaowu_get_fontawesome_icon_map()
-{
-    return [
-        'enrol_jiaowu:withkey' => 'fa-key',
-        'enrol_jiaowu:withoutkey' => 'fa-sign-in',
-    ];
+function enrol_jiaowu_create_new_group($courseid, $groupname) {
+    global $DB, $CFG;
+
+    require_once($CFG->dirroot . '/group/lib.php');
+
+    // Create a new group for the cohort.
+    $groupdata = new stdClass();
+    $groupdata->courseid = $courseid;
+    $groupdata->name = $groupname;
+    $groupid = groups_create_group($groupdata);
+
+    return $groupid;
 }
 
-function dd()
-{
-    var_dump('halo');
-    die();
-}

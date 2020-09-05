@@ -19,5 +19,7 @@ $string['jiaowu_error_exit'] = '选课退选';
 $string['editselectedusers'] = '编辑选中用户的选课';
 $string['deleteselectedusers'] = '删除被选中用户的选课';
 $string['confirmbulkdeleteenrolment'] = '您确定删除这些用户的选课吗？';
+$string['addgroup'] = '添加到组';
+$string['notfound'] = '暂未在教务系统中获取到您的课程信息！';
 
 

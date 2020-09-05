@@ -118,4 +118,10 @@ if ($ADMIN->fulltree) {
             get_string('sendcoursewelcomemessage_help', 'enrol_jiaowu'),
             ENROL_SEND_EMAIL_FROM_COURSE_CONTACT,
             enrol_send_welcome_email_options()));
+
+    $settings->add(new admin_setting_configtext('enrol_jiaowu/scnurl','教务api','','https://moodle.scnu.edu.cn/wsbs/outside/auth',PARAM_TEXT));
+
+    $settings->add(new admin_setting_configtext('enrol_jiaowu/scnucid','教务clientid','','7f5b29b82b7ee4c4163292ac4891a745',PARAM_TEXT));
+
+    $settings->add(new admin_setting_configtext('enrol_jiaowu/scnuselect','教务select','','be7844651cdf0f69947f6d00f82809926f47d06728dd35187a8c70f52c70b675',PARAM_TEXT));
 }

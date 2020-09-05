@@ -130,6 +130,8 @@ $string['courseinfo'] = 'College - course name - number of students';
 $string['jiaowu'] = 'Educational administration to choose courses';
 $string['jiaowu_error_notfind'] = 'No account, please inform students to log in to the platform';
 $string['jiaowu_error_exit'] = 'Course selection and withdrawal';
+$string['addgroup'] = 'Add to group';
+$string['notfound'] = 'Your course information has not been obtained in the educational administration system!';
 
 
 
