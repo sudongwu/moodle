@@ -114,16 +114,6 @@ class enrol_jiaowu_plugin extends enrol_plugin
         return true;
     }
 
-    public function show_enrolme_link(stdClass $instance)
-    {
-
-        if (true !== $this->can_self_enrol($instance, false)) {
-            return false;
-        }
-
-        return true;
-    }
-
     /**
      * Return true if we can add a new instance to this course.
      *
@@ -305,159 +295,6 @@ class enrol_jiaowu_plugin extends enrol_plugin
 
 
         return true;
-    }
-
-    /**
-     * Return information for enrolment instance containing list of parameters required
-     * for enrolment, name of enrolment plugin etc.
-     *
-     * @param stdClass $instance enrolment instance
-     * @return stdClass instance info.
-     */
-    public function get_enrol_info(stdClass $instance)
-    {
-
-        $instanceinfo = new stdClass();
-        $instanceinfo->id = $instance->id;
-        $instanceinfo->courseid = $instance->courseid;
-        $instanceinfo->type = $this->get_name();
-        $instanceinfo->name = $this->get_instance_name($instance);
-        $instanceinfo->status = $this->can_self_enrol($instance);
-
-        if ($instance->password) {
-            $instanceinfo->requiredparam = new stdClass();
-            $instanceinfo->requiredparam->enrolpassword = get_string('password', 'enrol_jiaowu');
-        }
-
-        // If enrolment is possible and password is required then return ws function name to get more information.
-        if ((true === $instanceinfo->status) && $instance->password) {
-            $instanceinfo->wsfunction = 'enrol_jiaowu_get_instance_info';
-        }
-        return $instanceinfo;
-    }
-
-    /**
-     * Add new instance of enrol plugin with default settings.
-     * @param stdClass $course
-     * @return int id of new instance
-     */
-    public function add_default_instance($course)
-    {
-        $fields = $this->get_instance_defaults();
-
-        if ($this->get_config('requirepassword')) {
-            $fields['password'] = generate_password(20);
-        }
-
-        return $this->add_instance($course, $fields);
-    }
-
-    /**
-     * Returns defaults for new instances.
-     * @return array
-     */
-    public function get_instance_defaults()
-    {
-        $expirynotify = $this->get_config('expirynotify');
-        if ($expirynotify == 2) {
-            $expirynotify = 1;
-            $notifyall = 1;
-        } else {
-            $notifyall = 0;
-        }
-
-        $fields = array();
-        $fields['status'] = $this->get_config('status');
-        $fields['roleid'] = $this->get_config('roleid');
-        $fields['enrolperiod'] = $this->get_config('enrolperiod');
-        $fields['expirynotify'] = $expirynotify;
-        $fields['notifyall'] = $notifyall;
-        $fields['expirythreshold'] = $this->get_config('expirythreshold');
-        $fields['customint1'] = $this->get_config('groupkey');
-        $fields['customint2'] = $this->get_config('longtimenosee');
-        $fields['customint3'] = $this->get_config('maxenrolled');
-        $fields['customint4'] = $this->get_config('sendcoursewelcomemessage');
-        $fields['customint5'] = 0;
-        $fields['customint6'] = $this->get_config('newenrols');
-
-        return $fields;
-    }
-
-
-    /**
-     * Sync all meta course links.
-     *
-     * @param progress_trace $trace
-     * @param int $courseid one course, empty mean all
-     * @return int 0 means ok, 1 means error, 2 means plugin disabled
-     */
-    public function sync(progress_trace $trace, $courseid = null)
-    {
-        global $DB;
-
-        if (!enrol_is_enabled('self')) {
-            $trace->finished();
-            return 2;
-        }
-
-        // Unfortunately this may take a long time, execution can be interrupted safely here.
-        core_php_time_limit::raise();
-        raise_memory_limit(MEMORY_HUGE);
-
-        $trace->output('Verifying self-enrolments...');
-
-        $params = array('now' => time(), 'useractive' => ENROL_USER_ACTIVE, 'courselevel' => CONTEXT_COURSE);
-        $coursesql = "";
-        if ($courseid) {
-            $coursesql = "AND e.courseid = :courseid";
-            $params['courseid'] = $courseid;
-        }
-
-        // Note: the logic of self enrolment guarantees that user logged in at least once (=== u.lastaccess set)
-        //       and that user accessed course at least once too (=== user_lastaccess record exists).
-
-        // First deal with users that did not log in for a really long time - they do not have user_lastaccess records.
-        $sql = "SELECT e.*, ue.userid
-                  FROM {user_enrolments} ue
-                  JOIN {enrol} e ON (e.id = ue.enrolid AND e.enrol = 'self' AND e.customint2 > 0)
-                  JOIN {user} u ON u.id = ue.userid
-                 WHERE :now - u.lastaccess > e.customint2
-                       $coursesql";
-        $rs = $DB->get_recordset_sql($sql, $params);
-        foreach ($rs as $instance) {
-            $userid = $instance->userid;
-            unset($instance->userid);
-            $this->unenrol_user($instance, $userid);
-            $days = $instance->customint2 / DAYSECS;
-            $trace->output("unenrolling user $userid from course $instance->courseid " .
-                "as they did not log in for at least $days days", 1);
-        }
-        $rs->close();
-
-        // Now unenrol from course user did not visit for a long time.
-        $sql = "SELECT e.*, ue.userid
-                  FROM {user_enrolments} ue
-                  JOIN {enrol} e ON (e.id = ue.enrolid AND e.enrol = 'self' AND e.customint2 > 0)
-                  JOIN {user_lastaccess} ul ON (ul.userid = ue.userid AND ul.courseid = e.courseid)
-                 WHERE :now - ul.timeaccess > e.customint2
-                       $coursesql";
-        $rs = $DB->get_recordset_sql($sql, $params);
-        foreach ($rs as $instance) {
-            $userid = $instance->userid;
-            unset($instance->userid);
-            $this->unenrol_user($instance, $userid);
-            $days = $instance->customint2 / DAYSECS;
-            $trace->output("unenrolling user $userid from course $instance->courseid " .
-                "as they did not access the course for at least $days days", 1);
-        }
-        $rs->close();
-
-        $trace->output('...user self-enrolment updates finished.');
-        $trace->finished();
-
-        $this->process_expirations($trace, $courseid);
-
-        return 0;
     }
 
     /**
@@ -671,12 +508,6 @@ class enrol_jiaowu_plugin extends enrol_plugin
     {
         global $CFG, $DB, $USER;
 
-        // Merge these two settings to one value for the single selection element.
-        if ($instance->notifyall and $instance->expirynotify) {
-            $instance->expirynotify = 2;
-        }
-        unset($instance->notifyall);
-
         $nameattribs = array('size' => '20', 'maxlength' => '255');
         $mform->addElement('text', 'name', get_string('custominstancename', 'enrol'), $nameattribs);
         $mform->setType('name', PARAM_TEXT);
@@ -785,9 +616,13 @@ class enrol_jiaowu_plugin extends enrol_plugin
     public function get_jiaowu_token()
     {
         $config = get_config('enrol_jiaowu');
-        $url = $config->scnurl;
-        $cid = $config->scnucid;
-        $cselect = $config->scnuselect;
+        $url = $config->url;
+        $cid = $config->clientid;
+        $cselect = $config->selectid;
+        if (empty($url) || empty($cid) || empty($cselect)) {
+            return '';
+        }
+
 
         $timestamp = time();
         $sign = sha1($cid.$timestamp.$cselect);
@@ -809,19 +644,29 @@ class enrol_jiaowu_plugin extends enrol_plugin
 
     // 获取当前教师的课程信息
     public function get_jiaowu_course() {
+        global $USER;
+
         $token = $this->get_jiaowu_token();
+        if (empty($token)) {
+            return [];
+        }
         $curl = new curl();
-        $url = 'http://moodle.scnu.edu.cn/wsbs/outside/getcourse';
+        $config = get_config('enrol_jiaowu');
+        $url = $config->course;
+//        $url = 'http://moodle.scnu.edu.cn/wsbs/outside/getcourse';
+
         $data = [
-            'username' => 19881016,
+//            'username' => 19881016,
+            'username' => $USER->username,
             'token' => $token,
         ];
         $cd = $curl->post($url,$data);
         $cd = json_decode($cd,true);
         $course = [];
+        $currentYear = date('Y');
         if ($cd['status'] == 1) {
             foreach ($cd['data'] as $k => $v) {
-                $course[2020 . '~' .$v['idnumber'] . '~' . $v['category'] . '~' . $v['shortname'] . '~' . $v['stunum']] = $v['category'] . '-' . $v['shortname'] . '-' . $v['stunum'];
+                $course[$currentYear . '~' .$v['idnumber'] . '~' . $v['category'] . '~' . $v['shortname'] . '~' . $v['stunum']] = $v['category'] . '-' . $v['shortname'] . '-' . $v['stunum'];
             }
         }
         return $course;
@@ -832,7 +677,9 @@ class enrol_jiaowu_plugin extends enrol_plugin
     {
         $token = $this->get_jiaowu_token();
         $curl = new curl();
-        $url = 'http://moodle.scnu.edu.cn/wsbs/outside/getstudent';
+        $config = get_config('enrol_jiaowu');
+        $url = $config->students;
+//        $url = 'http://moodle.scnu.edu.cn/wsbs/outside/getstudent';
         $data = [
             'idnumber' => $courseid,
             'token' => $token,
@@ -860,6 +707,7 @@ class enrol_jiaowu_plugin extends enrol_plugin
      */
     public function update_instance($instance, $data)
     {
+        global $DB;
         // In the form we are representing 2 db columns with one field.
         if ($data->expirynotify == 2) {
             $data->expirynotify = 1;
@@ -875,6 +723,8 @@ class enrol_jiaowu_plugin extends enrol_plugin
         if (!isset($data->customint6)) {
             $data->customint6 = $instance->customint6;
         }
+        $sql = "update {groups_members} set groupid = ? where itemid = ?";
+        $DB->execute($sql,[$data->customint2,$instance->id]);
         return parent::update_instance($instance, $data);
     }
 
@@ -900,13 +750,13 @@ class enrol_jiaowu_plugin extends enrol_plugin
                     $sql = "select ue.* from {user_enrolments} ue join {enrol} e on ue.enrolid = e.id where e.courseid = $instance->courseid and ue.userid = $userid";
                     $ck1 = $DB->get_record_sql($sql); // 查看用户是否进行过报名
                     if ($ck1) {
-                        if ($ck1->status == 1) { // 如果课程状态为已暂停，则启用他
-
-                            if ($instance->customint2) {
-                                require_once("$CFG->dirroot/group/lib.php");
-                                groups_add_member($instance->customint2,$userid);
+                        if ($instance->customint2) {
+                            require_once("$CFG->dirroot/group/lib.php");
+                            if (!groups_is_member($instance->customint2,$userid)) { // 如果不是该组成员
+                                groups_add_member($instance->customint2,$userid,'enrol_jiaowu',$instanceid);
                             }
-
+                        }
+                        if ($ck1->status == 1) { // 如果课程状态为已暂停，则启用他
                             $us = "update {user_enrolments} set status = 0 where userid = ? and enrolid = ?";
                             $DB->execute($us, [$userid, $instanceid]);
                         }
@@ -919,7 +769,9 @@ class enrol_jiaowu_plugin extends enrol_plugin
                     if (empty($getenrol)) {  // 没有返回则报名成功
                         if ($instance->customint2) {
                             require_once("$CFG->dirroot/group/lib.php");
-                            groups_add_member($instance->customint2,$userid);
+                            if (!groups_is_member($instance->customint2,$userid)) { // 如果不是该组成员
+                                groups_add_member($instance->customint2,$userid,'enrol_jiaowu',$instanceid);
+                            }
                             $enroldata['success'][] = $v['username'];
                         }
 
@@ -1011,8 +863,8 @@ class enrol_jiaowu_plugin extends enrol_plugin
         if (has_capability('enrol/jiaowu:manage', $context)) {
             $managelink = new moodle_url("/enrol/jiaowu/update.php", ['instanceid' => $instance->id]);
             $unpass = new moodle_url('/enrol/jiaowu/update.php', ['instanceid' => $instance->id, 'type' => 2]);
-            $icons[] = $OUTPUT->action_icon($unpass, new pix_icon('i/cohort', '选课异常列表', 'core', array('class' => 'iconsmall')));
-            $icons[] = $OUTPUT->action_icon($managelink, new pix_icon('a/refresh', '重新执行选课', 'core', array('class' => 'iconsmall')));
+            $icons[] = $OUTPUT->action_icon($unpass, new pix_icon('i/cohort', get_string('error_title','enrol_jiaowu'), 'core', array('class' => 'iconsmall')));
+            $icons[] = $OUTPUT->action_icon($managelink, new pix_icon('a/refresh', get_string('reupdate','enrol_jiaowu'), 'core', array('class' => 'iconsmall')));
         }
         $parenticons = parent::get_action_icons($instance);
         $icons = array_merge($icons, $parenticons);

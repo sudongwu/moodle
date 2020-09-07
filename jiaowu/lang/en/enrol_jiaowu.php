@@ -92,7 +92,7 @@ If an enrolment key is specified, any user attempting to enrol in the course wil
 $string['passwordinvalid'] = 'Incorrect enrolment key, please try again';
 $string['passwordinvalidhint'] = 'That enrolment key was incorrect, please try again<br />
 (Here\'s a hint - it starts with \'{$a}\')';
-$string['pluginname'] = 'jiaowu';
+$string['pluginname'] = 'Synchronization of course selection in Educational Administration';
 $string['pluginname_desc'] = 'The self enrolment plugin allows users to choose which courses they want to participate in. The courses may be protected by an enrolment key. Internally the enrolment is done via the manual enrolment plugin which has to be enabled in the same course.';
 $string['requirepassword'] = 'Require enrolment key';
 $string['requirepassword_desc'] = 'Require enrolment key in new courses and prevent removing of enrolment key from existing courses.';
@@ -132,6 +132,17 @@ $string['jiaowu_error_notfind'] = 'No account, please inform students to log in 
 $string['jiaowu_error_exit'] = 'Course selection and withdrawal';
 $string['addgroup'] = 'Add to group';
 $string['notfound'] = 'Your course information has not been obtained in the educational administration system!';
+$string['syn_success'] = 'Update succeeded';
+$string['error_title'] = 'Synchronization exception list！';
+$string['reupdate'] = 'Re implement course selection';
+
+
+$string['stuid'] = 'Student number';
+$string['stuname'] = 'Name';
+$string['stuemail'] = 'Email address';
+$string['studept'] = 'Department';
+$string['role'] = 'role';
+$string['error_reason'] = 'Abnormal causes';
 
 
 

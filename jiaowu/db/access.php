@@ -54,15 +54,6 @@ $capabilities = array(
         'contextlevel' => CONTEXT_COURSE,
     ),
 
-    /* Voluntarily unenrol self from course - watch out for data loss. */
-    'enrol/jiaowu:unenrolself' => array(
-        'captype' => 'write',
-        'contextlevel' => CONTEXT_COURSE,
-        'archetypes' => array(
-            'student' => CAP_ALLOW,
-        )
-    ),
-
     /* Unenrol anybody from course (including self) -  watch out for data loss. */
     'enrol/jiaowu:unenrol' => array(
         'captype' => 'write',
